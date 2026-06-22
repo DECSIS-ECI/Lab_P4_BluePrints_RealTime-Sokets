@@ -1,97 +1,177 @@
-import { useEffect, useRef, useState } from 'react'
-import { createStompClient, subscribeBlueprint } from './lib/stompClient.js'
-import { createSocket } from './lib/socketIoClient.js'
+import { useState, useCallback, useEffect } from 'react';
+import { useBlueprint } from './hooks/useBlueprint';
+import { useRealtime } from './hooks/useRealtime';
+import { BlueprintCanvas } from './components/BlueprintCanvas';
+import { BlueprintList } from './components/BlueprintList';
+import { BlueprintControls } from './components/BlueprintControls';
+import { TotalPoints } from './components/TotalPoints';
+import { ConnectionStatus } from './components/ConnectionStatus';
+import './App.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080' // Spring
-const IO_BASE  = import.meta.env.VITE_IO_BASE  ?? 'http://localhost:3001' // Node/Socket.IO
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001';
 
-export default function App() {
-  const [tech, setTech] = useState('stomp')
-  const [author, setAuthor] = useState('juan')
-  const [name, setName] = useState('plano-1')
-  const canvasRef = useRef(null)
+function App() {
+  // Estado principal
+  const [tech, setTech] = useState('socketio');
+  const [author, setAuthor] = useState('juan');
+  const [name, setName] = useState('plano-1');
 
-  const stompRef = useRef(null)
-  const unsubRef = useRef(null)
-  const socketRef = useRef(null)
+  // Estado del plano
+  const {
+    blueprint,
+    loading,
+    error: blueprintError,
+    totalPoints,
+    addPoint,
+    updateBlueprint,
+    deleteBlueprint,
+    createBlueprint,
+    loadBlueprint,
+  } = useBlueprint(author, name);
 
+  // Manejar recepción de puntos en tiempo real
+  const handlePointReceived = useCallback((data) => {
+    console.log('Punto recibido:', data);
+    if (data.points && data.points.length > 0) {
+      data.points.forEach(point => {
+        addPoint(point);
+      });
+    }
+  }, [addPoint]);
+
+  // Conexión en tiempo real
+  const {
+    connected,
+    error: rtError,
+    sendPoint,
+  } = useRealtime(tech, author, name, handlePointReceived);
+
+  // Manejar clic en el canvas
+  const handleCanvasClick = useCallback((point) => {
+    // Añadir punto localmente
+    addPoint(point);
+    
+    // Enviar a través del canal en tiempo real
+    sendPoint(point);
+  }, [addPoint, sendPoint]);
+
+  // Manejar selección de plano
+  const handleSelectBlueprint = useCallback((selectedName) => {
+    setName(selectedName);
+  }, []);
+
+  // Manejar guardar
+  const handleSave = useCallback(async () => {
+    if (!blueprint) return;
+    await updateBlueprint(blueprint);
+    alert('Plano guardado exitosamente');
+  }, [blueprint, updateBlueprint]);
+
+  // Manejar eliminar
+  const handleDelete = useCallback(async () => {
+    await deleteBlueprint();
+    setName('');
+    alert('Plano eliminado');
+  }, [deleteBlueprint]);
+
+  // Manejar crear
+  const handleCreate = useCallback(async (newBlueprint) => {
+    await createBlueprint(newBlueprint);
+    setName(newBlueprint.name);
+    alert('Plano creado exitosamente');
+  }, [createBlueprint]);
+
+  // Efecto para recargar cuando cambia el plano
   useEffect(() => {
-    fetch(`${tech==='stomp'?API_BASE:IO_BASE}/api/blueprints/${author}/${name}`)
-      .then(r=>r.json())
-      .then(drawAll)
-  }, [tech, author, name])
-
-  function drawAll(bp) {
-    const ctx = canvasRef.current?.getContext('2d')
-    if (!ctx) return
-    ctx.clearRect(0,0,600,400)
-    ctx.beginPath()
-    bp.points.forEach((p,i)=> {
-      if (i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y)
-    })
-    ctx.stroke()
-  }
-
-  useEffect(() => {
-    unsubRef.current?.(); unsubRef.current = null
-    stompRef.current?.deactivate?.(); stompRef.current = null
-    socketRef.current?.disconnect?.(); socketRef.current = null
-
-    if (tech === 'stomp') {
-      const client = createStompClient(API_BASE)
-      stompRef.current = client
-      client.onConnect = () => {
-        unsubRef.current = subscribeBlueprint(client, author, name, (upd)=> {
-          drawAll({ points: upd.points })
-        })
-      }
-      client.activate()
-    } else {
-      const s = createSocket(IO_BASE)
-      socketRef.current = s
-      const room = `blueprints.${author}.${name}`
-      s.emit('join-room', room)
-      s.on('blueprint-update', (upd)=> drawAll({ points: upd.points }))
+    if (author && name) {
+      loadBlueprint();
     }
-    return () => {
-      unsubRef.current?.(); unsubRef.current = null
-      stompRef.current?.deactivate?.()
-      socketRef.current?.disconnect?.()
-    }
-  }, [tech, author, name])
-
-  function onClick(e) {
-    const rect = e.target.getBoundingClientRect()
-    const point = { x: Math.round(e.clientX - rect.left), y: Math.round(e.clientY - rect.top) }
-
-    if (tech === 'stomp' && stompRef.current?.connected) {
-      stompRef.current.publish({ destination: '/app/draw', body: JSON.stringify({ author, name, point }) })
-    } else if (tech === 'socketio' && socketRef.current?.connected) {
-      const room = `blueprints.${author}.${name}`
-      socketRef.current.emit('draw-event', { room, author, name, point })
-    }
-  }
+  }, [author, name, loadBlueprint]);
 
   return (
-    <div style={{fontFamily:'Inter, system-ui', padding:16, maxWidth:900}}>
-      <h2>BluePrints RT – Socket.IO vs STOMP</h2>
-      <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
-        <label>Tecnología:</label>
-        <select value={tech} onChange={e=>setTech(e.target.value)}>
-          <option value="stomp">STOMP (Spring)</option>
-          <option value="socketio">Socket.IO (Node)</option>
-        </select>
-        <input value={author} onChange={e=>setAuthor(e.target.value)} placeholder="autor"/>
-        <input value={name} onChange={e=>setName(e.target.value)} placeholder="plano"/>
+    <div className="app">
+      {/* Header */}
+      <header className="app-header">
+        <h1 className="app-title">
+          BluePrints <span>RT</span>
+        </h1>
+        <div className="tech-selector">
+          <label>Tecnología RT:</label>
+          <select value={tech} onChange={(e) => setTech(e.target.value)}>
+            <option value="socketio">Socket.IO</option>
+            <option value="stomp">STOMP</option>
+          </select>
+        </div>
+      </header>
+
+      {/* Contenido principal */}
+      <div className="app-content">
+        {/* Columna izquierda - Canvas */}
+        <section className="canvas-section">
+          <div className="canvas-header">
+            <h2 className="canvas-title">
+              {author}/{name || 'Selecciona un plano'}
+            </h2>
+            <div className="canvas-info">
+              <ConnectionStatus 
+                connected={connected} 
+                error={rtError} 
+                tech={tech} 
+              />
+            </div>
+          </div>
+
+          <BlueprintCanvas
+            points={blueprint?.points || []}
+            onPointClick={handleCanvasClick}
+            readOnly={!connected || !name}
+          />
+
+          <div className="mt-4 text-sm text-gray-500">
+            Haz clic en el canvas para dibujar {!connected && '(conéctate primero)'}
+          </div>
+          
+          {blueprintError && (
+            <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+              {blueprintError}
+            </div>
+          )}
+        </section>
+
+        {/* Columna derecha - Sidebar */}
+        <aside className="sidebar">
+          <div className="sidebar-card">
+            <BlueprintControls
+              author={author}
+              name={name}
+              onAuthorChange={setAuthor}
+              onNameChange={setName}
+              onSave={handleSave}
+              onDelete={handleDelete}
+              onCreate={handleCreate}
+              isSaving={loading}
+            />
+          </div>
+
+          <div className="sidebar-card">
+            <TotalPoints 
+              total={totalPoints} 
+              author={author} 
+              name={name} 
+            />
+          </div>
+
+          <div className="sidebar-card">
+            <BlueprintList
+              author={author}
+              selectedName={name}
+              onSelectBlueprint={handleSelectBlueprint}
+            />
+          </div>
+        </aside>
       </div>
-      <canvas
-        ref={canvasRef}
-        width={600}
-        height={400}
-        style={{border:'1px solid #ddd', borderRadius:12}}
-        onClick={onClick}
-      />
-      <p style={{opacity:.7, marginTop:8}}>Tip: abre 2 pestañas y dibuja alternando para ver la colaboración.</p>
     </div>
-  )
+  );
 }
+
+export default App;

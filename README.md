@@ -175,3 +175,160 @@ En la interfaz: selecciona **Socket.IO** o **STOMP**, define `author` y `name`, 
 
 ## 📄 Licencia
 MIT (o la definida por el curso/equipo).
+
+---
+
+## Frontend Completo
+
+### Servicio CRUD
+
+Creamos services:
+
+![alt text](resources/image.png)
+
+Hook para manejar el estado del plano:
+
+![alt text](resources/image-1.png)
+
+Hook para manejar la conexión en tiempo real:
+
+![alt text](resources/image-2.png)
+
+Componente del Canvas:
+
+![alt text](resources/image-3.png)
+
+Lista de planos:
+
+![alt text](resources/image-4.png)
+
+Controles CRUD:
+
+![alt text](resources/image-5.png)
+
+Total de puntos:
+
+![alt text](resources/image-6.png)
+
+Estado de conexión:
+
+![alt text](resources/image-7.png)
+
+Estilos:
+
+![alt text](resources/image-8.png)
+
+---
+
+### Actualizar Backend para soportar CRUD
+
+El backend actual solo tiene GET. Vamos a actualizarlo para soportar todas las operaciones CRUD:
+
+Actualizamos el server.js:
+
+![alt text](resources/image-9.png)
+
+---
+
+### Ejecucion 
+
+### Terminal 1 - Backend
+cd Ruta
+
+npm install
+
+npm run dev
+
+### Terminal 2 - Frontend
+cd Ruta
+
+npm install
+
+npm run dev
+
+### Video prueba
+
+<video controls src="resources/VideoPrueba.mp4" title="Title"></video>
+
+### Resumen del Proyecto
+BluePrints RT es una aplicación de colaboración en tiempo real para dibujo de planos arquitectónicos. Permite a múltiples usuarios dibujar simultáneamente sobre el mismo plano, con soporte para dos tecnologías de comunicación en tiempo real: Socket.IO y STOMP.
+
+### Variables de Entorno
+`.env.local`
+
+VITE_API_BASE=http://localhost:3001      # API REST (CRUD)
+
+VITE_IO_BASE=http://localhost:3001       # Socket.IO Server
+
+VITE_STOMP_BASE=http://localhost:8080    # STOMP Server (Spring)
+
+### Endpoints
+`REST API (CRUD)`
+
+| Método | Endpoint | Descripción |
+|---------|----------|-------------|
+| GET | `/api/blueprints?author=:author` | Lista todos los planos de un autor. |
+| GET | `/api/blueprints/:author/:name` | Obtiene un plano específico. |
+| POST | `/api/blueprints` | Crea un nuevo plano. |
+| PUT | `/api/blueprints/:author/:name` | Actualiza un plano existente. |
+| DELETE | `/api/blueprints/:author/:name` | Elimina un plano. |
+
+### Eventos en Tiempo Real
+
+Socket.IO
+
+### Eventos Cliente → Servidor
+
+| Evento | Descripción |
+|---------|-------------|
+| `join-room` | Unirse a una sala específica. |
+| `draw-event` | Enviar un punto o trazo de dibujo al servidor. |
+
+### Eventos Servidor → Cliente
+
+| Evento | Descripción |
+|---------|-------------|
+| `blueprint-update` | Recibir actualizaciones del dibujo en tiempo real. |
+
+STOMP
+
+| Destino | Descripción |
+|----------|-------------|
+| `/app/draw` | Enviar un punto o trazo de dibujo al servidor. |
+| `/topic/blueprints.{author}.{name}` | Suscribirse para recibir actualizaciones de un plano específico en tiempo real. |
+
+### Decisiones de Diseño
+
+**Rooms vs Tópicos**
+
+Socket.IO - Rooms
+
+Decisión: Usar rooms para aislar la comunicación por plano.
+
+Ventajas:
+- Aislamiento automático: Cada sala es independiente
+- Sencillez: No requiere gestión de suscripciones
+- Eficiencia: El broadcast se limita a los miembros de la sala
+- Integración natural: Socket.IO maneja la gestión de salas automáticamente
+
+STOMP - Tópicos
+
+Decisión: Usar tópicos jerárquicos para identificar cada plano.
+
+Ventajas:
+- Estándar: Sigue el protocolo STOMP
+- Flexibilidad: Permite patrones de suscripción más complejos
+- Escalabilidad: Mejor para sistemas distribuidos
+- Compatibilidad: Funciona con brokers como RabbitMQ, ActiveMQ
+
+## Comparativa: Socket.IO vs STOMP
+
+| Aspecto | Socket.IO | STOMP |
+|----------|-----------|--------|
+| Protocolo | WebSocket con fallbacks | Simple Text Oriented Messaging Protocol |
+| Complejidad | Baja - API simple y directa | Media - requiere entender el protocolo |
+| Manejo de Salas/Tópicos | Salas (rooms) integradas de forma nativa | Basado en broker y suscripciones explícitas |
+| Reconexión | Automática con backoff | Manual, requiere implementación adicional |
+| Uso Típico | Aplicaciones web en tiempo real | Sistemas empresariales y microservicios |
+| Ventajas | Fácil de usar, buena documentación y gran comunidad | Estándar, interoperable y escalable |
+| Desventajas | Menos estandarizado y dependiente de la librería | Mayor curva de aprendizaje y configuración adicional |
