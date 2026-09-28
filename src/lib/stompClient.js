@@ -2,8 +2,10 @@ import { Client } from '@stomp/stompjs'
 // import SockJS from 'sockjs-client' // si quieres fallback
 
 export function createStompClient(baseUrl) {
+  const token = localStorage.getItem('token')
   const client = new Client({
     brokerURL: `${baseUrl.replace(/\/$/,'')}/ws-blueprints`,
+    connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
     // webSocketFactory: () => new SockJS(`${baseUrl}/ws-blueprints`),
     reconnectDelay: 1000,
     heartbeatIncoming: 10000,
